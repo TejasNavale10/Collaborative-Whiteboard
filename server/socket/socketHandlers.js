@@ -1,8 +1,4 @@
 const Room = require('../models/Room');
-const { saveDrawingCommand, cleanOldRooms } = require('../utils/roomUtils');
-
-// Schedule room cleanup every hour
-setInterval(cleanOldRooms, 60 * 60 * 1000);
 
 module.exports = (io) => {
   const roomUsers = {};
@@ -10,7 +6,7 @@ module.exports = (io) => {
   io.on('connection', (socket) => {
     let currentRoom = null;
 
-    socket.on('join-room', (roomId) => {
+    socket.on('join-room', async (roomId) => {
       currentRoom = roomId;
       socket.join(roomId);
 
@@ -18,9 +14,16 @@ module.exports = (io) => {
       if (!roomUsers[roomId]) roomUsers[roomId] = new Set();
       roomUsers[roomId].add(socket.id);
 
-      // Notify others and update user count
-      io.to(roomId).emit('user-joined', socket.id);
+      // Send user count
       io.to(roomId).emit('user-count', roomUsers[roomId].size);
+
+      // Fetch and send initial drawing data
+      try {
+        const room = await Room.findOne({ roomId });
+        socket.emit('initial-drawing-data', room?.drawingData || []);
+      } catch (err) {
+        socket.emit('initial-drawing-data', []);
+      }
     });
 
     socket.on('leave-room', (roomId) => {

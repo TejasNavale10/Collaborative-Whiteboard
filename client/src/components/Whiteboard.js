@@ -94,6 +94,15 @@ const Whiteboard = () => {
     };
   }, [socket, roomId]);
 
+  // Add this useEffect for initial drawing data from socket
+  useEffect(() => {
+    if (!socket) return;
+    socket.on('initial-drawing-data', (data) => {
+      setDrawingData(data);
+    });
+    return () => socket.off('initial-drawing-data');
+  }, [socket]);
+
   // Periodically clean up inactive cursors
   useEffect(() => {
     const interval = setInterval(() => {
