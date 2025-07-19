@@ -10,7 +10,7 @@ const Toolbar = ({ color, lineWidth, tool, onColorChange, onWidthChange, onToolC
         <ColorOption
           key={c}
           color={c}
-          active={color === c && tool === 'pen'}
+          $active={color === c && tool === 'pen'}
           onClick={() => { onColorChange(c); onToolChange('pen'); }}
           title={c}
         />
@@ -25,7 +25,7 @@ const Toolbar = ({ color, lineWidth, tool, onColorChange, onWidthChange, onToolC
       title="Stroke width"
     />
     <ToolButton
-      active={tool === 'eraser'}
+      $active={tool === 'eraser'}
       onClick={() => onToolChange('eraser')}
       title="Eraser"
     >🧹</ToolButton>
@@ -62,7 +62,7 @@ const ColorOption = styled.button`
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  border: 2px solid ${({ active }) => (active ? '#333' : '#fff')};
+  border: 2px solid ${({ $active }) => ($active ? '#333' : '#fff')};
   background: ${({ color }) => color};
   cursor: pointer;
   outline: none;
@@ -73,7 +73,7 @@ const WidthSlider = styled.input`
 `;
 
 const ToolButton = styled.button`
-  background: ${({ active }) => (active ? '#eee' : 'none')};
+  background: ${({ $active }) => ($active ? '#eee' : 'none')};
   color: #333;
   border: none;
   font-size: 1.2rem;

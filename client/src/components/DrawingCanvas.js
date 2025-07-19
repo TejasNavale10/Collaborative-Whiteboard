@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { getCoordinates, redrawCanvas } from '../utils';
 import { throttle } from 'lodash'; 
-import Toolbar from './Toolbar';
 import { useSocket } from '../hooks/useSocket';
 
 const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorChange, onWidthChange, onToolChange, onClear, onCursorUpdate }) => {
@@ -145,6 +144,7 @@ const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorCha
 
   return (
     <CanvasWrapper>
+      {/*
       <Toolbar
         color={color}
         lineWidth={lineWidth}
@@ -154,6 +154,7 @@ const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorCha
         onToolChange={onToolChange}
         onClear={handleClear}
       />
+      */}
       <StyledCanvas
         ref={canvasRef}
         onMouseDown={startDrawing}
