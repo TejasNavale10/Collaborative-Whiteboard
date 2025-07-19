@@ -4,13 +4,15 @@ import styled from 'styled-components';
 import DrawingCanvas from './DrawingCanvas';
 import Toolbar from './Toolbar';
 import UserCursors from './UserCursors';
+import { useSocket } from '../contexts/SocketContext';
 
 const cursorColors = [
   '#448AFF', '#FF5252', '#4CAF50', '#FFB300', '#9C27B0', '#00B8D4', '#FF4081'
 ];
 
-const Whiteboard = ({ socket }) => {
+const Whiteboard = () => {
   const { roomId } = useParams();
+  const socket = useSocket();
   const [users, setUsers] = useState([]);
   const [drawingData, setDrawingData] = useState([]);
   const [userCount, setUserCount] = useState(1);
@@ -24,11 +26,16 @@ const Whiteboard = ({ socket }) => {
 
   useEffect(() => {
     if (!socket) return;
+    const handleUserCount = (count) => setUserCount(count);
     const handleConnect = () => setIsConnected(true);
     const handleDisconnect = () => setIsConnected(false);
+
+    socket.on('user-count', handleUserCount);
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
+
     return () => {
+      socket.off('user-count', handleUserCount);
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
     };
@@ -41,12 +48,17 @@ const Whiteboard = ({ socket }) => {
     socket.emit('join-room', roomId);
 
     // Load initial drawing data
-    fetch(`/api/rooms/${roomId}`)
-      .then(res => res.json())
+    fetch(`${process.env.REACT_APP_SERVER_URL}/api/rooms/${roomId}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Network response was not ok');
+        return res.json();
+      })
       .then(data => {
-        if (data.drawingData) {
-          setDrawingData(data.drawingData);
-        }
+        setDrawingData(data.drawingData || []);
+      })
+      .catch(err => {
+        setDrawingData([]); // fallback to empty
+        console.error('Failed to fetch room data:', err);
       });
 
     // User presence events

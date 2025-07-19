@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { getCoordinates, redrawCanvas } from '../utils';
 import { throttle } from 'lodash'; 
-import { useSocket } from '../hooks/useSocket';
+import { useSocket } from '../contexts/SocketContext'; // or wherever your hook is
 
 const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorChange, onWidthChange, onToolChange, onClear, onCursorUpdate }) => {
   const socket = useSocket();

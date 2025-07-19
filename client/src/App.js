@@ -8,8 +8,8 @@ import { GlobalStyles } from './styles/globalStyles';
 function App() {
   return (
     <SocketProvider>
-      <GlobalStyles />
       <BrowserRouter>
+        <GlobalStyles />
         <Routes>
           <Route path="/" element={<RoomJoin />} />
           <Route path="/whiteboard/:roomId" element={<Whiteboard />} />
