@@ -1,0 +1,181 @@
+import React, { useEffect, useRef, useState } from 'react';
+import styled from 'styled-components';
+import { getCoordinates, redrawCanvas } from '../utils';
+import { throttle } from 'lodash'; // Add lodash to your dependencies
+
+const DrawingCanvas = ({ socket, roomId, initialData, onCursorUpdate }) => {
+  const canvasRef = useRef(null);
+  const [drawing, setDrawing] = useState(false);
+  const [currentPath, setCurrentPath] = useState([]);
+  const [color, setColor] = useState('#000000');
+  const [lineWidth, setLineWidth] = useState(5);
+
+  // Listen for clear-canvas event
+  useEffect(() => {
+    if (!socket) return;
+    socket.on('clear-canvas', () => {
+      const ctx = canvasRef.current.getContext('2d');
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    });
+    return () => socket.off('clear-canvas');
+  }, [socket]);
+
+  // Redraw on initialData change
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    if (initialData && initialData.length > 0) {
+      redrawCanvas(ctx, initialData);
+    }
+  }, [initialData]);
+
+  const startDrawing = (e) => {
+    setDrawing(true);
+    const { offsetX, offsetY } = getCoordinates(e, canvasRef.current);
+    setCurrentPath([{ x: offsetX, y: offsetY }]);
+  };
+
+  const draw = (e) => {
+    if (!drawing) return;
+    const { offsetX, offsetY } = getCoordinates(e, canvasRef.current);
+    setCurrentPath((prev) => {
+      const newPath = [...prev, { x: offsetX, y: offsetY }];
+      // Emit incremental updates for live sync
+      if (socket && newPath.length % 3 === 0) {
+        // every 3 points
+        socket.emit('draw-move', {
+          roomId,
+          color,
+          width: lineWidth,
+          points: newPath.slice(-3),
+        });
+      }
+      return newPath;
+    });
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    const points = [...currentPath, { x: offsetX, y: offsetY }];
+    for (let i = 1; i < points.length; i++) {
+      ctx.moveTo(points[i - 1].x, points[i - 1].y);
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.stroke();
+  };
+
+  const endDrawing = () => {
+    setDrawing(false);
+    if (currentPath.length > 1) {
+      socket.emit('draw', {
+        roomId,
+        color,
+        width: lineWidth,
+        points: currentPath,
+      });
+    }
+    setCurrentPath([]);
+  };
+
+  // Listen for remote draw events
+  useEffect(() => {
+    if (!socket) return;
+    socket.on('remote-draw', (data) => {
+      const ctx = canvasRef.current.getContext('2d');
+      ctx.strokeStyle = data.color;
+      ctx.lineWidth = data.width;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const points = data.points;
+      for (let i = 1; i < points.length; i++) {
+        ctx.moveTo(points[i - 1].x, points[i - 1].y);
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.stroke();
+    });
+    return () => socket.off('remote-draw');
+  }, [socket]);
+
+  // Listen for remote incremental draw events
+  useEffect(() => {
+    if (!socket) return;
+    socket.on('remote-draw-move', (data) => {
+      const ctx = canvasRef.current.getContext('2d');
+      ctx.strokeStyle = data.color;
+      ctx.lineWidth = data.width;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const points = data.points;
+      for (let i = 1; i < points.length; i++) {
+        ctx.moveTo(points[i - 1].x, points[i - 1].y);
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.stroke();
+    });
+    return () => socket.off('remote-draw-move');
+  }, [socket]);
+
+  const throttledCursorEmit = useRef(
+    throttle((roomId, x, y) => {
+      socket.emit('cursor-move', { roomId, x, y });
+    }, 16)
+  ).current;
+
+  // Send cursor position on mouse move
+  const handleMouseMove = (e) => {
+    if (!socket) return;
+    const { offsetX, offsetY } = getCoordinates(e, canvasRef.current);
+    throttledCursorEmit(roomId, offsetX, offsetY);
+    if (drawing) draw(e);
+    if (onCursorUpdate) onCursorUpdate({ x: offsetX, y: offsetY });
+  };
+
+  // Toolbar handlers
+  const handleColorChange = (newColor) => setColor(newColor);
+  const handleWidthChange = (w) => setLineWidth(w);
+  const handleClear = () => {
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    socket.emit('clear-canvas', { roomId });
+  };
+
+  return (
+    <CanvasWrapper>
+      <Toolbar
+        color={color}
+        lineWidth={lineWidth}
+        onColorChange={handleColorChange}
+        onWidthChange={handleWidthChange}
+        onClear={handleClear}
+      />
+      <StyledCanvas
+        ref={canvasRef}
+        onMouseDown={startDrawing}
+        onMouseMove={handleMouseMove}
+        onMouseUp={endDrawing}
+        onMouseLeave={endDrawing}
+        width={800}
+        height={600}
+      />
+    </CanvasWrapper>
+  );
+};
+
+const CanvasWrapper = styled.div`
+  position: relative;
+  width: 800px;
+  margin: 0 auto;
+`;
+
+const StyledCanvas = styled.canvas`
+  border: 2px solid #ccc;
+  background: #fff;
+  width: 800px;
+  height: 600px;
+  display: block;
+`;
+
+export default DrawingCanvas;
