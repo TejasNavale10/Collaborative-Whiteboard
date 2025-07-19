@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { SocketProvider } from './contexts/SocketContext';
 import RoomJoin from './components/RoomJoin';
 import Whiteboard from './components/Whiteboard';
-import GlobalStyles from './styles/globalStyles';
+import { GlobalStyles } from './styles/globalStyles';
 
 function App() {
   return (

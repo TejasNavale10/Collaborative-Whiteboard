@@ -3,15 +3,15 @@ import styled from 'styled-components';
 
 const colors = ['#000000', '#ff0000', '#0000ff', '#00ff00'];
 
-const Toolbar = ({ color, lineWidth, onColorChange, onWidthChange, onClear }) => (
+const Toolbar = ({ color, lineWidth, tool, onColorChange, onWidthChange, onToolChange, onClear }) => (
   <ToolbarContainer>
     <ColorPicker>
       {colors.map((c) => (
         <ColorOption
           key={c}
           color={c}
-          active={color === c}
-          onClick={() => onColorChange(c)}
+          active={color === c && tool === 'pen'}
+          onClick={() => { onColorChange(c); onToolChange('pen'); }}
           title={c}
         />
       ))}
@@ -24,6 +24,11 @@ const Toolbar = ({ color, lineWidth, onColorChange, onWidthChange, onClear }) =>
       onChange={(e) => onWidthChange(Number(e.target.value))}
       title="Stroke width"
     />
+    <ToolButton
+      active={tool === 'eraser'}
+      onClick={() => onToolChange('eraser')}
+      title="Eraser"
+    >🧹</ToolButton>
     <ClearButton onClick={onClear} title="Clear canvas">🗑</ClearButton>
   </ToolbarContainer>
 );
@@ -65,6 +70,19 @@ const ColorOption = styled.button`
 
 const WidthSlider = styled.input`
   width: 70px;
+`;
+
+const ToolButton = styled.button`
+  background: ${({ active }) => (active ? '#eee' : 'none')};
+  color: #333;
+  border: none;
+  font-size: 1.2rem;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  &:hover {
+    background: #e0e0e0;
+  }
 `;
 
 const ClearButton = styled.button`

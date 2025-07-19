@@ -21,7 +21,7 @@ const RoomJoin = () => {
           type="text"
           value={roomId}
           onChange={(e) => setRoomId(e.target.value)}
-          placeholder="Enter room code or leave empty for new room"
+          placeholder="Enter room code to join or leave empty to create"
           autoFocus
         />
         <JoinButton type="submit">Join Room</JoinButton>

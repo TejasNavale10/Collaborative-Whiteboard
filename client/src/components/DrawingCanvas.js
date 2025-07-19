@@ -1,14 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { getCoordinates, redrawCanvas } from '../utils';
-import { throttle } from 'lodash'; // Add lodash to your dependencies
+import { throttle } from 'lodash'; 
+import Toolbar from './Toolbar';
+import { useSocket } from '../hooks/useSocket';
 
-const DrawingCanvas = ({ socket, roomId, initialData, onCursorUpdate }) => {
+const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorChange, onWidthChange, onToolChange, onClear, onCursorUpdate }) => {
+  const socket = useSocket();
   const canvasRef = useRef(null);
   const [drawing, setDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState([]);
-  const [color, setColor] = useState('#000000');
-  const [lineWidth, setLineWidth] = useState(5);
 
   // Listen for clear-canvas event
   useEffect(() => {
@@ -55,8 +56,8 @@ const DrawingCanvas = ({ socket, roomId, initialData, onCursorUpdate }) => {
       return newPath;
     });
     const ctx = canvasRef.current.getContext('2d');
-    ctx.strokeStyle = color;
-    ctx.lineWidth = lineWidth;
+    ctx.strokeStyle = tool === 'eraser' ? '#fff' : color;
+    ctx.lineWidth = tool === 'eraser' ? 20 : lineWidth;
     ctx.lineCap = 'round';
     ctx.beginPath();
     const points = [...currentPath, { x: offsetX, y: offsetY }];
@@ -134,8 +135,8 @@ const DrawingCanvas = ({ socket, roomId, initialData, onCursorUpdate }) => {
   };
 
   // Toolbar handlers
-  const handleColorChange = (newColor) => setColor(newColor);
-  const handleWidthChange = (w) => setLineWidth(w);
+  const handleColorChange = (newColor) => onColorChange(newColor);
+  const handleWidthChange = (w) => onWidthChange(w);
   const handleClear = () => {
     const ctx = canvasRef.current.getContext('2d');
     ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
@@ -147,8 +148,10 @@ const DrawingCanvas = ({ socket, roomId, initialData, onCursorUpdate }) => {
       <Toolbar
         color={color}
         lineWidth={lineWidth}
+        tool={tool}
         onColorChange={handleColorChange}
         onWidthChange={handleWidthChange}
+        onToolChange={onToolChange}
         onClear={handleClear}
       />
       <StyledCanvas

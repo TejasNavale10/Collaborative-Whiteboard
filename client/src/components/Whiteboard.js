@@ -18,6 +18,9 @@ const Whiteboard = ({ socket }) => {
   const [userColors, setUserColors] = useState({});
   const [isConnected, setIsConnected] = useState(socket?.connected);
   const [cursorTimestamps, setCursorTimestamps] = useState({});
+  const [color, setColor] = useState('#000000');
+  const [lineWidth, setLineWidth] = useState(5);
+  const [tool, setTool] = useState('pen');
 
   useEffect(() => {
     if (!socket) return;
@@ -96,6 +99,13 @@ const Whiteboard = ({ socket }) => {
     return () => clearInterval(interval);
   }, [cursorTimestamps]);
 
+  const handleClear = () => {
+    // Clear local drawing data
+    setDrawingData([]);
+    // Emit clear event to server
+    socket.emit('clear-canvas', roomId);
+  };
+
   return (
     <WhiteboardContainer>
       <StatusBar>
@@ -103,12 +113,27 @@ const Whiteboard = ({ socket }) => {
         {isConnected ? 'Connected' : 'Disconnected'}
         <span style={{ marginLeft: 16 }}>Active users: {userCount}</span>
       </StatusBar>
-      <Toolbar socket={socket} roomId={roomId} />
+      <Toolbar
+        color={color}
+        lineWidth={lineWidth}
+        tool={tool}
+        onColorChange={setColor}
+        onWidthChange={setLineWidth}
+        onToolChange={setTool}
+        onClear={handleClear}
+      />
       <BoardWrapper>
-        <DrawingCanvas 
-          socket={socket} 
-          roomId={roomId} 
+        <DrawingCanvas
+          socket={socket}
+          roomId={roomId}
           initialData={drawingData}
+          color={color}
+          lineWidth={lineWidth}
+          tool={tool}
+          onColorChange={setColor}
+          onWidthChange={setLineWidth}
+          onToolChange={setTool}
+          onClear={handleClear}
         />
         <UserCursors cursors={remoteCursors} userColors={userColors} />
       </BoardWrapper>
