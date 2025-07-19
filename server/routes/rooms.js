@@ -1,6 +1,6 @@
 const express = require('express');
-const Room = require('../models/Room');
 const router = express.Router();
+const Room = require('../models/Room');
 
 // Join or create room
 router.post('/join', async (req, res) => {
@@ -21,13 +21,12 @@ router.post('/join', async (req, res) => {
 
 // Get room info
 router.get('/:roomId', async (req, res) => {
-  const { roomId } = req.params;
   try {
-    const room = await Room.findOne({ roomId });
+    const room = await Room.findOne({ roomId: req.params.roomId });
     if (!room) {
       return res.json({ drawingData: [] });
     }
-    res.json({ drawingData: room.drawingData || [] });
+    res.json({ drawingData: room.drawingData });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

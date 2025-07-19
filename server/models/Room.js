@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const drawingCommandSchema = new mongoose.Schema({
-  type: String, // 'stroke', 'clear'
+  type: String,
   data: Object,
   timestamp: { type: Date, default: Date.now }
 });
