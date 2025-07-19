@@ -1,4 +1,5 @@
 const Room = require('../models/Room');
+const { saveDrawingCommand } = require('../utils/roomUtils');
 
 module.exports = (io) => {
   const roomUsers = {};

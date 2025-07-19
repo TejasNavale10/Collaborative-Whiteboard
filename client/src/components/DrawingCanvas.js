@@ -24,11 +24,21 @@ const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorCha
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-    if (initialData && initialData.length > 0) {
-      redrawCanvas(ctx, initialData);
-    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Redraw all strokes
+    initialData.forEach(cmd => {
+      if (cmd.type === 'stroke' && cmd.data?.points?.length > 1) {
+        ctx.strokeStyle = cmd.data.color;
+        ctx.lineWidth = cmd.data.width;
+        ctx.beginPath();
+        ctx.moveTo(cmd.data.points[0].x, cmd.data.points[0].y);
+        for (let i = 1; i < cmd.data.points.length; i++) {
+          ctx.lineTo(cmd.data.points[i].x, cmd.data.points[i].y);
+        }
+        ctx.stroke();
+      }
+    });
   }, [initialData]);
 
   const startDrawing = (e) => {
