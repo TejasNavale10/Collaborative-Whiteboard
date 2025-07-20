@@ -95,7 +95,7 @@ const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorCha
       socket.emit('draw', {
         roomId,
         color: tool === 'eraser' ? '#fff' : color,
-        width: tool === 'eraser' ? 12 : lineWidth,
+        width: tool === 'eraser' ? 21 : lineWidth,
         points: currentPath,
         tool, // 'pen' or 'eraser'
       });
