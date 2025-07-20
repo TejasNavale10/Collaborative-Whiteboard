@@ -1,111 +1,150 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import styled from 'styled-components';
 import DrawingCanvas from './DrawingCanvas';
 import Toolbar from './Toolbar';
 import UserCursors from './UserCursors';
 import { useSocket } from '../contexts/SocketContext';
+import { v4 as uuidv4 } from 'uuid';
 
 const cursorColors = [
-  '#448AFF', '#FF5252', '#4CAF50', '#FFB300', '#9C27B0', '#00B8D4', '#FF4081'
+  '#FF5252', '#448AFF', '#4CAF50', '#FFB300',
+  '#9C27B0', '#00B8D4', '#FF4081', '#795548'
 ];
 
 const Whiteboard = () => {
   const { roomId } = useParams();
   const socket = useSocket();
-  const [users, setUsers] = useState([]);
   const [drawingData, setDrawingData] = useState([]);
-  const [userCount, setUserCount] = useState(1);
   const [remoteCursors, setRemoteCursors] = useState({});
   const [userColors, setUserColors] = useState({});
   const [userNames, setUserNames] = useState({});
   const [isConnected, setIsConnected] = useState(socket?.connected);
+  const [userCount, setUserCount] = useState(1);
   const [color, setColor] = useState('#000000');
   const [lineWidth, setLineWidth] = useState(5);
   const [tool, setTool] = useState('pen');
-  const [userName, setUserName] = useState(
-    localStorage.getItem('userName') || `User${Math.floor(Math.random() * 1000)}`
-  );
+  
+  // Generate completely unique ID per session
+  const [userId] = useState(() => uuidv4());
+  const [userName, setUserName] = useState(() => `User${Math.floor(Math.random() * 1000)}`);
 
+  // Assign color when component mounts
+  useEffect(() => {
+    const colorIndex = Object.keys(userColors).length % cursorColors.length;
+    setUserColors(prev => ({
+      ...prev,
+      [userId]: cursorColors[colorIndex]
+    }));
+  }, [userId]);
+
+  // Socket connection handlers
   useEffect(() => {
     if (!socket) return;
-    
-    const handleUserCount = (count) => setUserCount(count);
+
     const handleConnect = () => setIsConnected(true);
     const handleDisconnect = () => setIsConnected(false);
 
-    socket.on('user-count', handleUserCount);
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
 
     return () => {
-      socket.off('user-count', handleUserCount);
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
     };
   }, [socket]);
 
+  // Main room joining and event handling
   useEffect(() => {
     if (!socket || !roomId) return;
 
-    // Join room with username
-    socket.emit('join-room', { roomId, userName });
-
-    // Load initial drawing data
-    fetch(`${process.env.REACT_APP_SERVER_URL}/api/rooms/${roomId}`)
-      .then(res => res.ok ? res.json() : Promise.reject())
-      .then(data => setDrawingData(data.drawingData || []))
-      .catch(() => setDrawingData([]));
-
-    // User presence events
-    socket.on('user-joined', ({ userId, userName }) => {
-      setUsers(prev => [...prev, { id: userId }]);
-      setUserColors(prev => ({
-        ...prev,
-        [userId]: cursorColors[Object.keys(prev).length % cursorColors.length]
-      }));
-      setUserNames(prev => ({
-        ...prev,
-        [userId]: userName
-      }));
+    // Join room with user info
+    socket.emit('join-room', {
+      roomId,
+      userId,
+      userName,
+      color: userColors[userId] || cursorColors[0]
     });
 
-    socket.on('user-left', (userId) => {
-      setUsers(prev => prev.filter(user => user.id !== userId));
+    // Load initial drawing data
+    const loadInitialData = async () => {
+      try {
+        const response = await fetch(`${process.env.REACT_APP_SERVER_URL}/api/rooms/${roomId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setDrawingData(data?.drawingData || []);
+        }
+      } catch (error) {
+        setDrawingData([]);
+      }
+    };
+    loadInitialData();
+
+    // Event handlers
+    const handleUserJoined = ({ userId, userName, color }) => {
+      setUserColors(prev => ({ ...prev, [userId]: color }));
+      setUserNames(prev => ({ ...prev, [userId]: userName }));
+    };
+
+    const handleUserLeft = (userId) => {
       setRemoteCursors(prev => {
         const copy = { ...prev };
         delete copy[userId];
         return copy;
       });
-    });
+    };
 
-    socket.on('remote-cursor', ({ userId, x, y, userName }) => {
-      setRemoteCursors(prev => ({ 
-        ...prev, 
-        [userId]: { 
-          x, 
-          y,
-          timestamp: Date.now() 
-        } 
-      }));
-      setUserNames(prev => ({
+    const handleRemoteCursor = ({ userId, x, y }) => {
+      if (!userId) return;
+      
+      setRemoteCursors(prev => ({
         ...prev,
-        [userId]: userName || prev[userId] || `User${userId.slice(0, 4)}`
+        [userId]: {
+          x,
+          y,
+          timestamp: Date.now(),
+          userName: userNames[userId] || `User${userId.slice(0, 4)}`,
+          color: userColors[userId] || '#000000'
+        }
       }));
-    });
+    };
 
-    socket.on('initial-drawing-data', (data) => {
-      setDrawingData(data);
-    });
+    const handleInitialData = (data) => setDrawingData(data);
+    
+    const handleAllUsers = (users) => {
+      const colors = {};
+      const names = {};
+      users.forEach(user => {
+        if (!user.userId) return;
+        colors[user.userId] = user.color;
+        names[user.userId] = user.userName;
+      });
+      setUserColors(colors);
+      setUserNames(names);
+    };
+
+    const handleUserCount = (count) => {
+      setUserCount(count);
+    };
+
+    // Register event listeners
+    socket.on('user-joined', handleUserJoined);
+    socket.on('user-left', handleUserLeft);
+    socket.on('remote-cursor', handleRemoteCursor);
+    socket.on('initial-drawing-data', handleInitialData);
+    socket.on('all-users', handleAllUsers);
+    socket.on('user-count', handleUserCount);
 
     return () => {
-      socket.emit('leave-room', roomId);
-      socket.off('user-joined');
-      socket.off('user-left');
-      socket.off('remote-cursor');
-      socket.off('initial-drawing-data');
+      socket.emit('leave-room', { roomId, userId });
+      socket.off('user-joined', handleUserJoined);
+      socket.off('user-left', handleUserLeft);
+      socket.off('remote-cursor', handleRemoteCursor);
+      socket.off('initial-drawing-data', handleInitialData);
+      socket.off('all-users', handleAllUsers);
+      socket.off('user-count', handleUserCount);
     };
-  }, [socket, roomId, userName]);
+  }, [socket, roomId, userId, userName, userColors]);
 
   // Clean up inactive cursors
   useEffect(() => {
@@ -132,8 +171,7 @@ const Whiteboard = () => {
   const handleNameChange = (e) => {
     const newName = e.target.value || `User${Math.floor(Math.random() * 1000)}`;
     setUserName(newName);
-    localStorage.setItem('userName', newName);
-    socket.emit('update-user-name', { roomId, userName: newName });
+    socket.emit('update-user-name', { roomId, userId, userName: newName });
   };
 
   return (
@@ -141,7 +179,7 @@ const Whiteboard = () => {
       <StatusBar>
         <StatusDot $online={isConnected} />
         {isConnected ? 'Connected' : 'Disconnected'}
-        <span style={{ marginLeft: 16 }}>Users: {userCount}</span>
+        <span>Users: {userCount}</span>
         <NameInput
           type="text"
           value={userName}
@@ -166,11 +204,10 @@ const Whiteboard = () => {
           color={color}
           lineWidth={lineWidth}
           tool={tool}
-          onColorChange={setColor}
-          onWidthChange={setLineWidth}
-          onToolChange={setTool}
           onClear={handleClear}
           userName={userName}
+          userId={userId}
+          userColors={userColors}
         />
         <UserCursors 
           cursors={remoteCursors} 

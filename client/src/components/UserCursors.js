@@ -12,8 +12,7 @@ const CursorContainer = styled.div`
     opacity 0.3s ease;
   transform: translate(0, 0);
   will-change: transform;
-  opacity: ${props => props.active ? 1 : 0.3};
-  filter: ${props => props.active ? 'none' : 'blur(0.5px)'};
+  opacity: ${props => props.active ? 1 : 0.5};
 `;
 
 const CursorSvg = ({ color, name }) => (
@@ -27,7 +26,7 @@ const CursorSvg = ({ color, name }) => (
       />
     </svg>
     <NameTag color={color}>
-      {name || 'Guest'}
+      {name}
     </NameTag>
   </>
 );
@@ -58,7 +57,7 @@ const UserCursors = ({ cursors, userColors, userNames }) => {
       
       timeouts[userId] = setTimeout(() => {
         setActiveCursors(prev => ({ ...prev, [userId]: false }));
-      }, 2000); // 2 seconds of inactivity
+      }, 2000);
     });
 
     return () => {
@@ -68,16 +67,16 @@ const UserCursors = ({ cursors, userColors, userNames }) => {
 
   return (
     <>
-      {Object.entries(cursors).map(([userId, pos]) => (
+      {Object.entries(cursors).map(([userId, cursor]) => (
         <CursorContainer
           key={userId}
-          x={pos.x}
-          y={pos.y}
+          x={cursor.x}
+          y={cursor.y}
           active={activeCursors[userId]}
         >
           <CursorSvg 
             color={userColors[userId] || '#000'} 
-            name={userNames[userId]}
+            name={cursor.userName || `User${userId.slice(0, 4)}`}
           />
         </CursorContainer>
       ))}
