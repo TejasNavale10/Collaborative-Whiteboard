@@ -28,8 +28,8 @@ const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorCha
 
     // Redraw all strokes
     initialData.forEach(cmd => {
-      if (cmd.type === 'stroke' && cmd.data?.points?.length > 1) {
-        ctx.strokeStyle = cmd.data.color;
+      if ((cmd.type === 'stroke' || cmd.type === 'erase') && cmd.data?.points?.length > 1) {
+        ctx.strokeStyle = cmd.type === 'erase' ? '#fff' : cmd.data.color;
         ctx.lineWidth = cmd.data.width;
         ctx.beginPath();
         ctx.moveTo(cmd.data.points[0].x, cmd.data.points[0].y);
@@ -77,16 +77,17 @@ const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorCha
     ctx.stroke();
   };
 
-  const endDrawing = () => {
-    setDrawing(false);
+  const finishDrawing = () => {
     if (currentPath.length > 1) {
       socket.emit('draw', {
         roomId,
-        color,
-        width: lineWidth,
+        color: tool === 'eraser' ? '#fff' : color,
+        width: tool === 'eraser' ? 12 : lineWidth, // or your eraser width
         points: currentPath,
+        tool, // 'pen' or 'eraser'
       });
     }
+    setDrawing(false);
     setCurrentPath([]);
   };
 
@@ -154,23 +155,12 @@ const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorCha
 
   return (
     <CanvasWrapper>
-      {/*
-      <Toolbar
-        color={color}
-        lineWidth={lineWidth}
-        tool={tool}
-        onColorChange={handleColorChange}
-        onWidthChange={handleWidthChange}
-        onToolChange={onToolChange}
-        onClear={handleClear}
-      />
-      */}
       <StyledCanvas
         ref={canvasRef}
         onMouseDown={startDrawing}
         onMouseMove={handleMouseMove}
-        onMouseUp={endDrawing}
-        onMouseLeave={endDrawing}
+        onMouseUp={finishDrawing}
+        onMouseLeave={finishDrawing}
         width={800}
         height={600}
       />

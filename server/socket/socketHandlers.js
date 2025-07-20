@@ -67,14 +67,24 @@ module.exports = (io) => {
       });
     });
     
-    socket.on('draw', (data) => {
+    socket.on('draw', async (data) => {
       socket.to(data.roomId).emit('remote-draw', data);
-      // Optionally save to DB here
+      // Save the full stroke (all points)
+      await saveDrawingCommand(data.roomId, {
+        type: data.tool === 'eraser' ? 'erase' : 'stroke',
+        data: {
+          color: data.color,
+          width: data.width,
+          points: data.points
+        },
+        timestamp: new Date()
+      });
     });
 
-    socket.on('clear-canvas', ({ roomId }) => {
+    socket.on('clear-canvas', async ({ roomId }) => {
       socket.to(roomId).emit('clear-canvas');
-      // Optionally clear DB here
+      // Clear DB
+      await Room.updateOne({ roomId }, { $set: { drawingData: [] } });
     });
     
     socket.on('disconnect', () => {
