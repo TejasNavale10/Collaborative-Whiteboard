@@ -18,14 +18,18 @@ const Whiteboard = () => {
   const [userCount, setUserCount] = useState(1);
   const [remoteCursors, setRemoteCursors] = useState({});
   const [userColors, setUserColors] = useState({});
+  const [userNames, setUserNames] = useState({});
   const [isConnected, setIsConnected] = useState(socket?.connected);
-  const [cursorTimestamps, setCursorTimestamps] = useState({});
   const [color, setColor] = useState('#000000');
   const [lineWidth, setLineWidth] = useState(5);
   const [tool, setTool] = useState('pen');
+  const [userName, setUserName] = useState(
+    localStorage.getItem('userName') || `User${Math.floor(Math.random() * 1000)}`
+  );
 
   useEffect(() => {
     if (!socket) return;
+    
     const handleUserCount = (count) => setUserCount(count);
     const handleConnect = () => setIsConnected(true);
     const handleDisconnect = () => setIsConnected(false);
@@ -44,29 +48,25 @@ const Whiteboard = () => {
   useEffect(() => {
     if (!socket || !roomId) return;
 
-    // Join room
-    socket.emit('join-room', roomId);
+    // Join room with username
+    socket.emit('join-room', { roomId, userName });
 
     // Load initial drawing data
     fetch(`${process.env.REACT_APP_SERVER_URL}/api/rooms/${roomId}`)
-      .then(res => {
-        if (!res.ok) throw new Error('Network response was not ok');
-        return res.json();
-      })
-      .then(data => {
-        setDrawingData(data.drawingData || []);
-      })
-      .catch(err => {
-        setDrawingData([]); // fallback to empty
-        console.error('Failed to fetch room data:', err);
-      });
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => setDrawingData(data.drawingData || []))
+      .catch(() => setDrawingData([]));
 
     // User presence events
-    socket.on('user-joined', (userId) => {
+    socket.on('user-joined', ({ userId, userName }) => {
       setUsers(prev => [...prev, { id: userId }]);
       setUserColors(prev => ({
         ...prev,
         [userId]: cursorColors[Object.keys(prev).length % cursorColors.length]
+      }));
+      setUserNames(prev => ({
+        ...prev,
+        [userId]: userName
       }));
     });
 
@@ -79,52 +79,61 @@ const Whiteboard = () => {
       });
     });
 
-    socket.on('user-count', (count) => setUserCount(count));
-    socket.on('remote-cursor', ({ userId, x, y }) => {
-      setRemoteCursors(prev => ({ ...prev, [userId]: { x, y } }));
-      setCursorTimestamps(prev => ({ ...prev, [userId]: Date.now() }));
+    socket.on('remote-cursor', ({ userId, x, y, userName }) => {
+      setRemoteCursors(prev => ({ 
+        ...prev, 
+        [userId]: { 
+          x, 
+          y,
+          timestamp: Date.now() 
+        } 
+      }));
+      setUserNames(prev => ({
+        ...prev,
+        [userId]: userName || prev[userId] || `User${userId.slice(0, 4)}`
+      }));
+    });
+
+    socket.on('initial-drawing-data', (data) => {
+      setDrawingData(data);
     });
 
     return () => {
       socket.emit('leave-room', roomId);
       socket.off('user-joined');
       socket.off('user-left');
-      socket.off('user-count');
       socket.off('remote-cursor');
+      socket.off('initial-drawing-data');
     };
-  }, [socket, roomId]);
+  }, [socket, roomId, userName]);
 
-  // Add this useEffect for initial drawing data from socket
-  useEffect(() => {
-    if (!socket) return;
-    socket.on('initial-drawing-data', (data) => {
-      setDrawingData(data);
-    });
-    return () => socket.off('initial-drawing-data');
-  }, [socket]);
-
-  // Periodically clean up inactive cursors
+  // Clean up inactive cursors
   useEffect(() => {
     const interval = setInterval(() => {
+      const now = Date.now();
       setRemoteCursors(prev => {
-        const now = Date.now();
         const updated = {};
-        Object.entries(prev).forEach(([id, pos]) => {
-          if (cursorTimestamps[id] && now - cursorTimestamps[id] < 5000) {
-            updated[id] = pos;
+        Object.entries(prev).forEach(([id, cursor]) => {
+          if (now - cursor.timestamp < 3000) {
+            updated[id] = cursor;
           }
         });
         return updated;
       });
-    }, 2000);
+    }, 1000);
     return () => clearInterval(interval);
-  }, [cursorTimestamps]);
+  }, []);
 
   const handleClear = () => {
-    // Clear local drawing data
     setDrawingData([]);
-    // Emit clear event to server
     socket.emit('clear-canvas', roomId);
+  };
+
+  const handleNameChange = (e) => {
+    const newName = e.target.value || `User${Math.floor(Math.random() * 1000)}`;
+    setUserName(newName);
+    localStorage.setItem('userName', newName);
+    socket.emit('update-user-name', { roomId, userName: newName });
   };
 
   return (
@@ -132,7 +141,14 @@ const Whiteboard = () => {
       <StatusBar>
         <StatusDot $online={isConnected} />
         {isConnected ? 'Connected' : 'Disconnected'}
-        <span style={{ marginLeft: 16 }}>Active users: {userCount}</span>
+        <span style={{ marginLeft: 16 }}>Users: {userCount}</span>
+        <NameInput
+          type="text"
+          value={userName}
+          onChange={handleNameChange}
+          maxLength="20"
+          placeholder="Your name"
+        />
       </StatusBar>
       <Toolbar
         color={color}
@@ -145,7 +161,6 @@ const Whiteboard = () => {
       />
       <BoardWrapper>
         <DrawingCanvas
-          socket={socket}
           roomId={roomId}
           initialData={drawingData}
           color={color}
@@ -155,8 +170,13 @@ const Whiteboard = () => {
           onWidthChange={setLineWidth}
           onToolChange={setTool}
           onClear={handleClear}
+          userName={userName}
         />
-        <UserCursors cursors={remoteCursors} userColors={userColors} />
+        <UserCursors 
+          cursors={remoteCursors} 
+          userColors={userColors}
+          userNames={userNames}
+        />
       </BoardWrapper>
     </WhiteboardContainer>
   );
@@ -189,6 +209,15 @@ const StatusDot = styled.span`
   margin-right: 6px;
 `;
 
+const NameInput = styled.input`
+  margin-left: auto;
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  max-width: 150px;
+`;
+
 const BoardWrapper = styled.div`
   position: relative;
   flex: 1;
@@ -197,33 +226,6 @@ const BoardWrapper = styled.div`
   justify-content: center;
   min-height: 0;
   overflow: auto;
-  @media (max-width: 900px) {
-    align-items: flex-start;
-    padding-top: 40px;
-  }
-`;
-
-// In DrawingCanvas.js, ensure the canvas is responsive:
-const CanvasWrapper = styled.div`
-  position: relative;
-  width: 100%;
-  max-width: 900px;
-  margin: 0 auto;
-  @media (max-width: 900px) {
-    max-width: 100vw;
-  }
-`;
-
-const StyledCanvas = styled.canvas`
-  border: 2px solid #ccc;
-  background: #fff;
-  width: 100%;
-  height: 60vh;
-  min-height: 320px;
-  max-height: 80vh;
-  display: block;
-  border-radius: 10px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
 `;
 
 export default Whiteboard;

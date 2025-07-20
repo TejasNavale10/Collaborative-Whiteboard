@@ -1,169 +1,193 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import styled from 'styled-components';
-import { getCoordinates, redrawCanvas } from '../utils';
-import { throttle } from 'lodash'; 
-import { useSocket } from '../contexts/SocketContext'; // or wherever your hook is
+import { getCoordinates } from '../utils';
+import { throttle } from 'lodash';
+import { useSocket } from '../contexts/SocketContext';
+import simplify from 'simplify-js';
 
-const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorChange, onWidthChange, onToolChange, onClear, onCursorUpdate }) => {
+const DrawingCanvas = ({ 
+  roomId, 
+  initialData, 
+  color, 
+  lineWidth, 
+  tool, 
+  onCursorUpdate,
+  userName
+}) => {
   const socket = useSocket();
   const canvasRef = useRef(null);
+  const ctxRef = useRef(null);
   const [drawing, setDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState([]);
+  const lastPointRef = useRef(null);
 
-  // Listen for clear-canvas event
+  // Initialize canvas and context
+  useEffect(() => {
+    ctxRef.current = canvasRef.current.getContext('2d');
+  }, []);
+
+  // Handle clear-canvas events
   useEffect(() => {
     if (!socket) return;
-    socket.on('clear-canvas', () => {
-      const ctx = canvasRef.current.getContext('2d');
-      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-    });
-    return () => socket.off('clear-canvas');
+    
+    const handleClear = () => {
+      ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    };
+
+    socket.on('clear-canvas', handleClear);
+    return () => socket.off('clear-canvas', handleClear);
   }, [socket]);
 
-  // Redraw on initialData change
+  // Redraw canvas when initialData changes
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const ctx = ctxRef.current;
+    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
 
-    // Redraw all strokes, then all erases
     initialData.forEach(cmd => {
-      if (cmd.type === 'stroke' && cmd.data?.points?.length > 1) {
-        ctx.strokeStyle = cmd.data.color;
-        ctx.lineWidth = cmd.data.width;
-        ctx.beginPath();
-        ctx.moveTo(cmd.data.points[0].x, cmd.data.points[0].y);
-        for (let i = 1; i < cmd.data.points.length; i++) {
-          ctx.lineTo(cmd.data.points[i].x, cmd.data.points[i].y);
-        }
-        ctx.stroke();
+      if (!cmd.data?.points?.length) return;
+      
+      ctx.strokeStyle = cmd.type === 'erase' ? '#fff' : cmd.data.color;
+      ctx.lineWidth = cmd.data.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      
+      const points = cmd.data.points;
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
       }
-    });
-    // Then draw all erases on top
-    initialData.forEach(cmd => {
-      if (cmd.type === 'erase' && cmd.data?.points?.length > 1) {
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = cmd.data.width;
-        ctx.beginPath();
-        ctx.moveTo(cmd.data.points[0].x, cmd.data.points[0].y);
-        for (let i = 1; i < cmd.data.points.length; i++) {
-          ctx.lineTo(cmd.data.points[i].x, cmd.data.points[i].y);
-        }
-        ctx.stroke();
-      }
+      ctx.stroke();
     });
   }, [initialData]);
 
+  // Throttled cursor emit function
+  const throttledCursorEmit = useCallback(
+    throttle((x, y) => {
+      if (!socket) return;
+      socket.emit('cursor-move', {
+        roomId,
+        x: Math.round(x),
+        y: Math.round(y),
+        userName
+      });
+    }, 50),
+    [socket, roomId, userName]
+  );
+
+  // Throttled draw emit function
+  const throttledDrawEmit = useCallback(
+    throttle((points) => {
+      if (!socket || points.length < 2) return;
+      
+      const simplified = simplify(points, 1.5, true);
+      socket.emit('draw-move', {
+        roomId,
+        color: tool === 'eraser' ? '#fff' : color,
+        width: tool === 'eraser' ? 21 : lineWidth,
+        points: simplified,
+        userName
+      });
+    }, 50),
+    [socket, roomId, color, lineWidth, tool, userName]
+  );
+
   const startDrawing = (e) => {
-    setDrawing(true);
     const { offsetX, offsetY } = getCoordinates(e, canvasRef.current);
+    setDrawing(true);
     setCurrentPath([{ x: offsetX, y: offsetY }]);
+    lastPointRef.current = { x: offsetX, y: offsetY };
   };
 
   const draw = (e) => {
     if (!drawing) return;
+    
     const { offsetX, offsetY } = getCoordinates(e, canvasRef.current);
-    setCurrentPath((prev) => {
-      const newPath = [...prev, { x: offsetX, y: offsetY }];
-      // Emit incremental updates for live sync
-      if (socket && newPath.length % 3 === 0) {
-        // every 3 points
-        socket.emit('draw-move', {
-          roomId,
-          color,
-          width: lineWidth,
-          points: newPath.slice(-3),
-        });
-      }
-      return newPath;
-    });
-    const ctx = canvasRef.current.getContext('2d');
+    const newPoint = { x: offsetX, y: offsetY };
+    
+    // Draw locally
+    const ctx = ctxRef.current;
     ctx.strokeStyle = tool === 'eraser' ? '#fff' : color;
     ctx.lineWidth = tool === 'eraser' ? 20 : lineWidth;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.beginPath();
-    const points = [...currentPath, { x: offsetX, y: offsetY }];
-    for (let i = 1; i < points.length; i++) {
-      ctx.moveTo(points[i - 1].x, points[i - 1].y);
-      ctx.lineTo(points[i].x, points[i].y);
-    }
+    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
+    ctx.lineTo(newPoint.x, newPoint.y);
     ctx.stroke();
+    
+    // Update current path
+    setCurrentPath(prev => [...prev, newPoint]);
+    lastPointRef.current = newPoint;
   };
 
   const finishDrawing = () => {
+    if (!drawing) return;
+    
     if (currentPath.length > 1) {
       socket.emit('draw', {
         roomId,
         color: tool === 'eraser' ? '#fff' : color,
         width: tool === 'eraser' ? 21 : lineWidth,
         points: currentPath,
-        tool, // 'pen' or 'eraser'
+        tool,
+        userName
       });
     }
+    
     setDrawing(false);
     setCurrentPath([]);
+    lastPointRef.current = null;
   };
 
-  // Listen for remote draw events
+  // Handle remote drawing events
   useEffect(() => {
     if (!socket) return;
-    socket.on('remote-draw', (data) => {
-      const ctx = canvasRef.current.getContext('2d');
+    
+    const handleRemoteDraw = (data) => {
+      const ctx = ctxRef.current;
       ctx.strokeStyle = data.color;
       ctx.lineWidth = data.width;
       ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
       ctx.beginPath();
+      
       const points = data.points;
-      for (let i = 1; i < points.length; i++) {
-        ctx.moveTo(points[i - 1].x, points[i - 1].y);
-        ctx.lineTo(points[i].x, points[i].y);
+      if (points.length === 1) {
+        ctx.arc(points[0].x, points[0].y, data.width/2, 0, Math.PI*2);
+        ctx.fill();
+      } else {
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
-    });
-    return () => socket.off('remote-draw');
+    };
+
+    socket.on('remote-draw', handleRemoteDraw);
+    socket.on('remote-draw-move', handleRemoteDraw);
+    
+    return () => {
+      socket.off('remote-draw', handleRemoteDraw);
+      socket.off('remote-draw-move', handleRemoteDraw);
+    };
   }, [socket]);
 
-  // Listen for remote incremental draw events
-  useEffect(() => {
-    if (!socket) return;
-    socket.on('remote-draw-move', (data) => {
-      const ctx = canvasRef.current.getContext('2d');
-      ctx.strokeStyle = data.color;
-      ctx.lineWidth = data.width;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      const points = data.points;
-      for (let i = 1; i < points.length; i++) {
-        ctx.moveTo(points[i - 1].x, points[i - 1].y);
-        ctx.lineTo(points[i].x, points[i].y);
-      }
-      ctx.stroke();
-    });
-    return () => socket.off('remote-draw-move');
-  }, [socket]);
-
-  const throttledCursorEmit = useRef(
-    throttle((roomId, x, y) => {
-      socket.emit('cursor-move', { roomId, x, y });
-    }, 16)
-  ).current;
-
-  // Send cursor position on mouse move
   const handleMouseMove = (e) => {
-    if (!socket) return;
     const { offsetX, offsetY } = getCoordinates(e, canvasRef.current);
-    throttledCursorEmit(roomId, offsetX, offsetY);
-    if (drawing) draw(e);
+    
+    // Update cursor position
+    throttledCursorEmit(offsetX, offsetY);
     if (onCursorUpdate) onCursorUpdate({ x: offsetX, y: offsetY });
-  };
-
-  // Toolbar handlers
-  const handleColorChange = (newColor) => onColorChange(newColor);
-  const handleWidthChange = (w) => onWidthChange(w);
-  const handleClear = () => {
-    const ctx = canvasRef.current.getContext('2d');
-    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-    socket.emit('clear-canvas', { roomId });
+    
+    // Handle drawing
+    if (drawing) {
+      draw(e);
+      if (currentPath.length % 3 === 0) {
+        throttledDrawEmit(currentPath);
+      }
+    }
   };
 
   return (
@@ -174,6 +198,9 @@ const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorCha
         onMouseMove={handleMouseMove}
         onMouseUp={finishDrawing}
         onMouseLeave={finishDrawing}
+        onTouchStart={startDrawing}
+        onTouchMove={handleMouseMove}
+        onTouchEnd={finishDrawing}
         width={800}
         height={600}
       />
@@ -193,6 +220,7 @@ const StyledCanvas = styled.canvas`
   width: 800px;
   height: 600px;
   display: block;
+  touch-action: none;
 `;
 
 export default DrawingCanvas;
