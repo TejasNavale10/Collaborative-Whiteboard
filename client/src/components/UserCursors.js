@@ -2,39 +2,26 @@ import React from 'react';
 import styled from 'styled-components';
 
 const UserCursors = ({ cursors, userColors }) => (
-  <CursorsContainer>
-    {Object.entries(cursors).map(([id, cursor]) => (
-      <Cursor
-        key={id}
+  <>
+    {Object.entries(cursors).map(([userId, pos]) => (
+      <div
+        key={userId}
         style={{
-          left: `${cursor.x}px`,
-          top: `${cursor.y}px`,
-          backgroundColor: userColors?.[id] || '#448AFF'
+          position: 'absolute',
+          left: pos.x,
+          top: pos.y,
+          pointerEvents: 'none',
+          zIndex: 10,
+          color: userColors[userId] || '#000',
+          fontWeight: 'bold'
         }}
-      />
+      >
+        <svg width="18" height="18">
+          <circle cx="9" cy="9" r="7" fill={userColors[userId] || '#000'} />
+        </svg>
+      </div>
     ))}
-  </CursorsContainer>
+  </>
 );
-
-const CursorsContainer = styled.div`
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-`;
-
-const Cursor = styled.div`
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  box-shadow: 0 0 2px #333;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  transition: left 0.12s linear, top 0.12s linear; // <--- Add smooth animation
-`;
 
 export default UserCursors;

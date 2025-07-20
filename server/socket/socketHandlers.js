@@ -90,7 +90,6 @@ module.exports = (io) => {
     socket.on('disconnect', () => {
       if (currentRoom && roomUsers[currentRoom]) {
         roomUsers[currentRoom].delete(socket.id);
-        io.to(currentRoom).emit('user-left', socket.id);
         io.to(currentRoom).emit('user-count', roomUsers[currentRoom].size);
       }
     });

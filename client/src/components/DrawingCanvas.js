@@ -26,10 +26,23 @@ const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorCha
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Redraw all strokes
+    // Redraw all strokes, then all erases
     initialData.forEach(cmd => {
-      if ((cmd.type === 'stroke' || cmd.type === 'erase') && cmd.data?.points?.length > 1) {
-        ctx.strokeStyle = cmd.type === 'erase' ? '#fff' : cmd.data.color;
+      if (cmd.type === 'stroke' && cmd.data?.points?.length > 1) {
+        ctx.strokeStyle = cmd.data.color;
+        ctx.lineWidth = cmd.data.width;
+        ctx.beginPath();
+        ctx.moveTo(cmd.data.points[0].x, cmd.data.points[0].y);
+        for (let i = 1; i < cmd.data.points.length; i++) {
+          ctx.lineTo(cmd.data.points[i].x, cmd.data.points[i].y);
+        }
+        ctx.stroke();
+      }
+    });
+    // Then draw all erases on top
+    initialData.forEach(cmd => {
+      if (cmd.type === 'erase' && cmd.data?.points?.length > 1) {
+        ctx.strokeStyle = '#fff';
         ctx.lineWidth = cmd.data.width;
         ctx.beginPath();
         ctx.moveTo(cmd.data.points[0].x, cmd.data.points[0].y);
@@ -82,7 +95,7 @@ const DrawingCanvas = ({ roomId, initialData, color, lineWidth, tool, onColorCha
       socket.emit('draw', {
         roomId,
         color: tool === 'eraser' ? '#fff' : color,
-        width: tool === 'eraser' ? 12 : lineWidth, // or your eraser width
+        width: tool === 'eraser' ? 12 : lineWidth,
         points: currentPath,
         tool, // 'pen' or 'eraser'
       });
